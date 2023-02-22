@@ -127,3 +127,25 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# logger
+wandb/
+
+# data
+data/
+
+# deprecated code
+old/
+breeds-ref.py
+breeds_inspection.ipynb
+prepare_parameters.ipynb
+metric.py
+visualize_demo.ipynb
+visualize.py
+eval.py
+
+# env
+environment.yml
+
+# external code
+better_mistakes/

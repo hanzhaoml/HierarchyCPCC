@@ -1,0 +1,21 @@
+{   
+    "mid":{
+        "epochs": 100,
+        "optimizer": {
+            "lr": 0.05
+        },
+        "scheduler": {
+            "step_size": 60
+        }
+    },
+    "fine":{
+        "epochs": 100,
+        "optimizer": {
+            "lr": 0.05
+        },
+        "scheduler": {
+            "step_size": 60
+        }
+    }
+    
+}

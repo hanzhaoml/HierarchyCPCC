@@ -1,0 +1,12 @@
+{
+    "epochs": 70,
+    "optimizer": {
+        "lr": 0.05,
+        "momentum": 0.9,
+        "weight_decay": 0.0005
+    },
+    "scheduler": {
+        "gamma": 0.2,
+        "step_size": 25
+    }
+}
