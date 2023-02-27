@@ -4,7 +4,8 @@ This is the codebase for [Learning Structured Representations by Embedding Class
 ## Introduction
 Label hierarchies, which encode the semantic relationship between objects, are widely available in modern ML datasets. To leverage such information in feature representation, we introduce CPCC as a regularizer to convert the traditional permutation invariant feature into a structured representation. CPCC is defined to be the correlation coefficient of two pairwise metrics $t(\cdot, \cdot)$ and $\rho(\cdot, \cdot)$. Tree metric $t$ is the shortest distance between two labels on the label graph, and $\rho$ is the distance between two class conditioned feature centroids.
 
-$$CPCC(t,\rho) = \frac{\sum\limits_{i<j}(t(v_i,v_j) - \overline{t})(\rho(v_i,v_j) - \overline{\rho})}{\sqrt{\sum\limits_{i<j}(t(v_i,v_j) - \overline{t})^2} \sqrt{\sum\limits_{i<j}(\rho(v_i,v_j) - \overline{\rho})^2}}$$
+$$CPCC(t,\rho) = \frac{\sum\limits_{i < j}(t(v_i,v_j) - \overline{t})(\rho(v_i,v_j) - \overline{\rho})}{\sqrt{\sum\limits_{i < j}(t(v_i,v_j) - \overline{t})^2} \sqrt{\sum\limits_{i < j}(\rho(v_i,v_j) - \overline{\rho})^2}}$$
+
 
 Following label hierarchy, CPCC groups fine classes sharing the same coarse class together and push fine classes under different coarse classes away. This interpretable representation leads to better performance on several downstream tasks.
 
