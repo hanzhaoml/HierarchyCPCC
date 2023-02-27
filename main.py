@@ -14,6 +14,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import pdist
 
+# Official implementation from: https://github.com/fiveai/making-better-mistakes
 from better_mistakes.model.losses import HierarchicalCrossEntropyLoss
 from better_mistakes.trees import get_weighting
 from better_mistakes.model.labels import make_all_soft_labels, make_batch_soft_labels
