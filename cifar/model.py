@@ -16,7 +16,7 @@ class ResNet18(nn.Module):
     '''
     def __init__(self, num_classes : List[int]):
         super(ResNet18, self).__init__()
-        self.backbone = resnet18(pretrained=False)  
+        self.backbone = resnet18()  
         self.backbone.conv1 =  nn.Sequential(
                                 nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
                                 nn.BatchNorm2d(64),
@@ -45,7 +45,7 @@ class ResNet18(nn.Module):
 class ResNet50(nn.Module): 
     def __init__(self, num_classes : List[int]):
         super(ResNet50, self).__init__()
-        self.backbone = resnet50(pretrained=False)  
+        self.backbone = resnet50()  
         self.backbone.conv1 =  nn.Sequential(
                                 nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
                                 nn.BatchNorm2d(64),

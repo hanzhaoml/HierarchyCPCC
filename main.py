@@ -7,9 +7,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 import numpy as np
+import pandas as pd
 
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, silhouette_score
 from sklearn.mixture import GaussianMixture
+from sklearn.manifold import TSNE
+from scipy.spatial.distance import pdist
 
 from better_mistakes.model.losses import HierarchicalCrossEntropyLoss
 from better_mistakes.trees import get_weighting
@@ -20,6 +23,9 @@ import argparse
 import os
 import json
 from typing import *
+
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from model import init_model
 from data import make_kshot_loader, make_dataloader
@@ -101,6 +107,9 @@ def pretrain_objective(train_loader : DataLoader, test_loader : DataLoader, devi
                     "lamb":lamb,
                     "breeds_setting":breeds_setting,
                     }
+        if CPCC:
+            init_config['cpcc_metric'] = cpcc_metric
+        
         config = {**init_config, **optim_config, **scheduler_config}        
 
         torch.autograd.set_detect_anomaly(True)
@@ -148,7 +157,8 @@ def pretrain_objective(train_loader : DataLoader, test_loader : DataLoader, devi
         wandb.init(project=f"{dataset_name}_onestage_pretrain", 
                 entity="structured_task",
                 name=datetime.now().strftime("%m%d%Y%H%M%S"),
-                config=config)
+                config=config,
+                settings=wandb.Settings(code_dir="."))
 
         model = init_model(dataset_name, num_classes, device)
         optimizer, scheduler = init_optim_schedule(model, hyper)
@@ -313,7 +323,7 @@ def pretrain_objective(train_loader : DataLoader, test_loader : DataLoader, devi
                         "val_losses_ce":sum(test_losses_ce)/len(test_losses_ce),
                     }
             
-            if CPCC:
+            if CPCC: # batch-CPCC
                 log_dict["train_losses_cpcc"] = sum(train_losses_cpcc)/len(train_losses_cpcc)
                 log_dict["val_losses_cpcc"] = sum(test_losses_cpcc)/len(test_losses_cpcc)
             if group:
@@ -373,6 +383,8 @@ def pretrain_objective(train_loader : DataLoader, test_loader : DataLoader, devi
                     "lamb":lamb,
                     "breeds_setting":breeds_setting,
                     }
+        if CPCC:
+            init_config['cpcc_metric'] = cpcc_metric
         
         optim_config, scheduler_config = hyper['optimizer'], hyper['scheduler']
         config = {**init_config, **optim_config, **scheduler_config}  
@@ -446,7 +458,8 @@ def pretrain_objective(train_loader : DataLoader, test_loader : DataLoader, devi
         wandb.init(project=f"{dataset_name}_onestage_pretrain", # reset, log to one stage
                 entity="structured_task",
                 name=datetime.now().strftime("%m%d%Y%H%M%S"),
-                config=config)
+                config=config,
+                settings=wandb.Settings(code_dir="."))
         
         # Step 2: train 80% epochs for fine class only
         model = init_model(dataset_name, num_fine_classes, device)
@@ -456,7 +469,7 @@ def pretrain_objective(train_loader : DataLoader, test_loader : DataLoader, devi
         model.load_state_dict(model_dict)
         # reset optimizer and scheduler
         optimizer, scheduler = init_optim_schedule(model, hyper)
-        for epoch in range(int(epochs*0.8)):
+        for epoch in range(epochs - int(epochs*0.2)):
             t_start = datetime.now()
             # ============== Stage 2 Train =================
             model.train()
@@ -620,6 +633,8 @@ def downstream_transfer(save_dir : str, seed : int, device : torch.device,
                     "task":task,
                     "breeds_setting":breeds_setting,
                     }
+    if CPCC:
+            init_config['cpcc_metric'] = cpcc_metric
     
     optim_config, scheduler_config = hyper['optimizer'], hyper['scheduler']
     config = {**init_config, **optim_config, **scheduler_config}  
@@ -627,7 +642,8 @@ def downstream_transfer(save_dir : str, seed : int, device : torch.device,
     wandb.init(project=f"{dataset_name}-subpop", # {dataset_name}-subpop/new-level-tuning
                entity="structured_task",
                name=datetime.now().strftime("%m%d%Y%H%M%S"),
-               config=config
+               config=config,
+               settings=wandb.Settings(code_dir=".")
     )
     
     optimizer, scheduler = init_optim_schedule(model, hyper)
@@ -833,6 +849,7 @@ def feature_extractor(dataloader : DataLoader, split : str, task : str, dataset_
 
     features = []
     targets_fine = []
+    targets_coarse = []
     with torch.no_grad():
         for item in dataloader:
             data = item[0]
@@ -842,9 +859,15 @@ def feature_extractor(dataloader : DataLoader, split : str, task : str, dataset_
             feature = model(data)[0]
             features.append(feature.cpu().detach().numpy())
             targets_fine.append(target_fine.cpu().detach().numpy())
+            if len(item) == 5:
+                target_coarse = item[2]
+                target_coarse = target_coarse.to(device)
+                targets_coarse.append(target_coarse.cpu().detach().numpy())
     features = np.concatenate(features,axis=0)
-    labels = np.concatenate(targets_fine,axis=0)
-    return (features, labels)
+    targets_fine = np.concatenate(targets_fine,axis=0)
+    if len(targets_coarse) > 0:
+        targets_coarse = np.concatenate(targets_coarse,axis=0)  
+    return (features, targets_fine, targets_coarse)
 
 def ood_detection(seeds : int, dataset_name : str, exp_name : str):
     '''
@@ -860,9 +883,9 @@ def ood_detection(seeds : int, dataset_name : str, exp_name : str):
     out = {}
     for seed in range(seeds):
         # compute features
-        in_train_features, in_train_labels = feature_extractor(in_train_loader, 'full', '', dataset_name, seed)
-        in_test_features, _ = feature_extractor(in_test_loader, 'full', '', dataset_name, seed)
-        out_test_features, _ = feature_extractor(out_test_loader, 'full', '', dataset_name, seed)
+        in_train_features, in_train_labels, _ = feature_extractor(in_train_loader, 'full', '', dataset_name, seed)
+        in_test_features, _, _ = feature_extractor(in_test_loader, 'full', '', dataset_name, seed)
+        out_test_features, _, _ = feature_extractor(out_test_loader, 'full', '', dataset_name, seed)
         print("Features successfully loaded.")
 
         features_outlier = np.concatenate([out_test_features, in_test_features], axis=0)
@@ -890,6 +913,165 @@ def ood_detection(seeds : int, dataset_name : str, exp_name : str):
         json.dump(out, fp, indent=4)
     print(out)
     return oods
+
+def retrieve_final_metrics(test_loader : DataLoader, dataset_name : str):
+    
+    def fullCPCC(dataL, targets_fineL, fine2coarse : list):
+        '''
+            Evaluate CPCC on full given test set.
+        '''
+        def poincareFn(x, y):
+            eps = 1e-5
+            proj_x = x * (1 - eps) / (sum(x**2)**0.5)
+            proj_y = y * (1 - eps) / (sum(y**2)**0.5)
+            num = 2 * sum((proj_x - proj_y)**2)
+            den = (1 - (sum(proj_x**2))) * (1 - (sum(proj_y**2)))
+            return np.arccosh(num/den)
+
+        all_seed_res = []
+        for (data, targets_fine) in zip(dataL, targets_fineL):
+            df_fine = pd.concat([pd.DataFrame(data), pd.Series(targets_fine, name='target')], axis = 1)
+            mean_df_fine = df_fine.groupby(['target']).mean()
+
+            acc_tree_dist = [1 if fine2coarse[i] == fine2coarse[j] else 2 for i in range(len(fine2coarse)) for j in range(i+1,len(fine2coarse))]
+            mean_tree_dist = np.average(acc_tree_dist)
+
+            if cpcc_metric == 'l2':
+                acc_l2_dist = pdist(np.array(mean_df_fine),metric='euclidean') 
+            elif cpcc_metric == 'l1':
+                acc_l2_dist = pdist(np.array(mean_df_fine),metric='cityblock') 
+            elif cpcc_metric == 'poincare':
+                acc_l2_dist = pdist(np.array(mean_df_fine),metric=poincareFn)
+            mean_l2_dist = np.average(acc_l2_dist)
+
+            numerator = np.dot((acc_l2_dist - mean_l2_dist),(acc_tree_dist - mean_tree_dist))
+            denominator = (np.sum((acc_l2_dist - mean_l2_dist)**2) * np.sum((acc_tree_dist - mean_tree_dist)**2))**0.5
+
+            all_seed_res.append(numerator/denominator)
+        out = dict()
+        out['CPCC'] = all_seed_res
+        out['mean'] = np.average(all_seed_res)
+        out['std'] = np.std(all_seed_res)
+        with open(save_dir+f'/{split}{task}_CPCC.json', 'w') as fp:
+            json.dump(out, fp, indent=4)
+        return out
+
+    def silhouette(dataL, targets_coarseL):
+        '''
+            Use coarse label to calculate silhouette score.
+        '''
+        all_seed_res = []
+        for (data, targets_coarse) in zip(dataL, targets_coarseL):
+            res = silhouette_score(data, targets_coarse, metric='euclidean')
+            all_seed_res.append(res.item())
+        out = dict()
+        out['silhouette'] = all_seed_res
+        out['mean'] = np.average(all_seed_res)
+        out['std'] = np.std(all_seed_res)
+        with open(save_dir+f'/{split}{task}_silhouette.json', 'w') as fp:
+            json.dump(out, fp, indent=4)
+        return out
+
+    def plot_distM(dataL, targets_fineL, dataset): 
+        '''
+            Plot distance matrix for CIFAR. Coarse classes are grouped together,
+            so that groups of distance values on the diagonal will be smaller.
+        '''
+        coarse_targets_map = dataset.coarse_map
+        finecls2names = dataset.fine_names
+        x_axis = []
+        for i in range(len(set(coarse_targets_map))):
+            x_axis.extend(list(np.where(coarse_targets_map == i)[0]))
+        d = dict(zip(range(len(finecls2names)),x_axis))
+
+        fine_named_axis = [finecls2names[cls] for cls in x_axis]
+        rows,cols = len(finecls2names),len(finecls2names)
+
+        for i, (data, targets_fine) in enumerate(zip(dataL, targets_fineL)):
+            fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(80, 80))
+            seed = i
+            if os.path.exists(save_dir+f"/distM_seed{seed}.npy"):
+                M = np.load(save_dir+f"/distM_seed{seed}.npy")
+            else:
+                df = pd.concat([pd.DataFrame(data), pd.Series(targets_fine, name='target')], axis = 1)
+                
+                sns.set(font_scale=1.2)
+                mean_df = df.groupby(['target']).mean()
+                M = np.zeros((rows,cols))
+                for r in range(rows):
+                    for c in range(cols):
+                        if r == c:
+                            M[r,c] = 0
+                        else:
+                            vr = np.array(mean_df.iloc[d[r],:])
+                            vc = np.array(mean_df.iloc[d[c],:])
+                            M[r,c] = np.linalg.norm(vr-vc,ord=2)
+            s = sns.heatmap(M, annot=True, fmt=".3g", cmap="YlGnBu", ax=axes, cbar=False)
+            s.set_xticklabels(fine_named_axis,ha='center',rotation=45)
+            s.set_yticklabels(fine_named_axis,rotation=0)
+            s.tick_params(left=True, right=True, bottom=True, top=True, labelright=True, labeltop=True)
+            if not(os.path.exists(save_dir+f"/distM_seed{seed}.npy")):
+                np.save(save_dir+f"/distM_seed{seed}.npy",M)
+            
+            plt.savefig(save_dir+f"/distM_seed{seed}.pdf")
+            plt.clf()
+        return
+
+    def plot_TSNE(dataL, targets_coarseL, dataset):
+        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(35, 30))
+        for i, (data) in enumerate(dataL):
+            seed = i
+            tsne = TSNE(
+                n_components=2,
+                init="random",
+                random_state=seed,
+                perplexity=30, 
+                learning_rate="auto",
+                n_iter=1200
+            )
+            tsneX = tsne.fit_transform(data)
+            if not(os.path.exists(save_dir+f"/TSNE_seed{seed}.npy")):
+                tsneX = tsne.fit_transform(data)
+                np.save(save_dir+f"/TSNE_seed{seed}.npy",tsneX)
+            else:
+                tsneX = np.load(save_dir+f"/TSNE_seed{seed}.npy")
+            tsne_df = pd.DataFrame(data = tsneX, columns = ['TSNE1', 'TSNE2'])
+            final_df = pd.concat([tsne_df, pd.Series(targets_coarseL[seed], name='target_coarse')], axis = 1)
+            ax = axes
+            ax.set_xticklabels([])
+            ax.set_xticks([])
+            ax.set_yticklabels([])
+            ax.set_yticks([])
+            targets = list(range(len(dataset.coarse_names)))
+            mappables = []
+            for target in targets:
+                indicesToKeep = final_df['target_coarse'] == target
+                mappable = ax.scatter(final_df.loc[indicesToKeep, 'TSNE1'],final_df.loc[indicesToKeep, 'TSNE2'])
+                mappables.append(mappable)
+            colormap = plt.cm.gist_ncar 
+            colorst = [colormap(i) for i in np.linspace(0, 0.99, len(ax.collections))]       
+            for t,j1 in enumerate(ax.collections):
+                j1.set_color(colorst[t])
+            ax.legend(handles=mappables, labels=dataset.coarse_names, fontsize=24, ncol=5, loc='upper center', bbox_to_anchor=(0.5, -0.01))
+            ax.axis('off')
+            plt.savefig(save_dir+f"/TSNE_seed{seed}.pdf")
+            plt.clf()
+    
+    dataL, targets_fineL, targets_coarseL = [],[],[]
+    for seed in range(seeds):
+        data, targets_fine, targets_coarse = feature_extractor(test_loader, split, task, dataset_name, seed)
+        dataL.append(data)
+        targets_fineL.append(targets_fine)
+        targets_coarseL.append(targets_coarse)
+    dataset = test_loader.dataset 
+    out_cpcc = fullCPCC(dataL, targets_fineL, dataset.coarse_map)
+    out_silhouette = silhouette(dataL, targets_coarseL)
+    
+    if (split == 'full') and (dataset_name == 'CIFAR'):
+        plot_distM(dataL, targets_fineL, dataset)
+        plot_TSNE(dataL, targets_coarseL, dataset)
+    print(out_cpcc, out_silhouette)
+    return out_cpcc, out_silhouette
 
 def main():
     
@@ -936,22 +1118,24 @@ def main():
         train_loader, test_loader = make_dataloader(num_workers, batch_size, 'full', dataset_name, case, breeds_setting)
     
     downstream_zeroshot(seeds, save_dir, split, task, train_loader, test_loader, levels, exp_name, device, dataset_name)
-
-    if dataset_name == 'CIFAR':
+    retrieve_final_metrics(test_loader, dataset_name)
+    if (dataset_name == 'CIFAR') and (split == 'full'):
         ood_detection(seeds, dataset_name, exp_name)
+    
     return
 
     
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--timestamp", required=True, help=r'datetime.now().strftime("%m%d%Y%H%M%S")') # TODO: better initialization to avoid exp_name mistmatch mistakes
+    parser.add_argument("--root", default="/data/common/cindy2000_sh", type=str, help='directory that you want to save your experiment results')
+    parser.add_argument("--timestamp", required=True, help=r'your unique experiment id, hint: datetime.now().strftime("%m%d%Y%H%M%S")') 
     parser.add_argument("--dataset", required=True, help='MNIST/CIFAR/BREEDS')
     parser.add_argument("--exp_name", required=True, help='ERM/MTL/Curriculum/sumloss/HXE/soft/quad')
     parser.add_argument("--split", required=True, help='split/full')
     parser.add_argument("--task", default='', help='in/sub')
     parser.add_argument("--cpcc", required=True, type=int, help='0/1')
-    parser.add_argument("--cpcc_metric", default='l2', type=str, help='distance metric in CPCC, can be l2/l1/poincare')
+    parser.add_argument("--cpcc_metric", default='l2', type=str, help='distance metric in CPCC, l2/l1/poincare')
     parser.add_argument("--cpcc_list", nargs='+', default=['coarse'], help='ex: --cpcc-list mid coarse, for 3 layer cpcc')
     parser.add_argument("--group", default=0, type=int, help='0/1, grouplasso')
     parser.add_argument("--case", type=int, help='Type of MNIST, 0/1')
@@ -979,17 +1163,20 @@ if __name__ == '__main__':
     seeds = args.seeds
     lamb = args.lamb
 
-    root = f'/data/common/cindy2000_sh/hierarchy_results/{dataset_name}'
+    root = args.root 
+    
+    root = f'{root}/hierarchy_results/{dataset_name}' 
     save_dir = root + '/' + timestamp 
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    if not os.path.exists(root + f'/{timestamp}'):
-        os.makedirs(root + f'/{timestamp}')
 
     if dataset_name == 'BREEDS':
         for breeds_setting in ['living17','entity13','entity30','nonliving26']:
             save_dir = root + '/' + timestamp + '/' + breeds_setting
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
             main()
     
     else:

@@ -102,6 +102,7 @@ class CPCCLoss(nn.Module):
         # assume unweighted tree
         # when coarse class the same, shortest distance == 2
         # otherwise, shortest distance == 4
+        # TODO: weighted tree, arbitrary level on the tree
         tree_pairwise_dist = torch.tensor([2 if fine2layer[all_fine[i]] == fine2layer[all_fine[j]] else 4 for i in range(len(all_fine)) for j in range(i+1,len(all_fine))], device=device)
         return tree_pairwise_dist
     

@@ -48,7 +48,7 @@ def make_dataloader(num_workers : int, batch_size : int, task : str, dataset : s
     '''
     if dataset == 'MNIST':
         if case is None:
-            raise ValueError("Plesae specify --case as any of 0/1")
+            raise ValueError("Please specify --case as any of 0/1")
         train_loader, test_loader = mnist.make_dataloader(num_workers, batch_size, task, case)
     elif dataset == 'CIFAR':
         train_loader, test_loader = cifar.make_dataloader(num_workers, batch_size, task)

@@ -143,9 +143,3 @@ metric.py
 visualize_demo.ipynb
 visualize.py
 eval.py
-
-# env
-environment.yml
-
-# external code
-better_mistakes/

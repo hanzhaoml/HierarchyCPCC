@@ -14,7 +14,7 @@ def init_model(dataset : str, num_classes : List[int], device : torch.device):
     if dataset == 'MNIST':
         model = nn.DataParallel(mnist.CNN(num_classes)).to(device)
     elif dataset == 'CIFAR':
-        model = nn.DataParallel(cifar.ResNet50(num_classes)).to(device) # TODO
+        model = nn.DataParallel(cifar.ResNet18(num_classes)).to(device) 
     elif dataset == 'BREEDS':
         model = nn.DataParallel(breeds.ResNet18(num_classes)).to(device)
     return model

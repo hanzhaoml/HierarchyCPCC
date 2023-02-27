@@ -9,7 +9,7 @@ class ResNet18(nn.Module):
     
     def __init__(self, num_classes : List[int]):
         super(ResNet18, self).__init__()
-        self.backbone = resnet18(pretrained=False)  # for imagenet
+        self.backbone = resnet18()  # for imagenet
         self.base = nn.Sequential(*list(self.backbone.children())[:-1])
         self.out_features = 512
         self.head = len(num_classes)
