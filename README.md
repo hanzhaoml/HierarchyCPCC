@@ -70,10 +70,13 @@ To use any custom dataset, you can create a new dataset folder and include:
     - a `make_dataloader` function that creates train test loader for each split-task combination
     - Note: In our experiments, while calculating CPCC of within a batch, any pairwise calculations are derived from pairs of labels at the same height. Therefore, instead of using any shortest distance algorithms, we simply hard code the distance later in `loss.py` given precalculated layer mappings. 
 
-Please read code in `\cifar`, `\mnist`, `\breeds` for reference.
+Please read code in `/cifar`, `/mnist`, `/breeds` for reference.
+
+## Acknowledgement
+Our repository is built upon [making-better-mistakes](https://github.com/fiveai/making-better-mistakes/tree/master) and [breeds](https://github.com/MadryLab/BREEDS-Benchmarks).
 
 ## Citation
-If you find our work helpful, please consider cite our paper: (Arxiv ver. TBD)
+If you find our work helpful, please consider cite our paper:
 
 ```
 @inproceedings{
