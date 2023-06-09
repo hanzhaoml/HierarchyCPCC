@@ -177,7 +177,7 @@ class QuadrupletLoss(nn.Module):
                 r = idx # r : index of anchor
                 p_pluss, p_minuss, ns = memo[t] # valid indices
 
-                p_plus = p_pluss[random.choice(range(len(p_pluss)))] # randomly select positive sample
+                p_plus = p_pluss[range(len(p_pluss))[0]] # (randomly) select positive sample
                 distance_positive = self.l2(representation[r], representation[p_plus])
 
                 # hard mining for faster convergence
