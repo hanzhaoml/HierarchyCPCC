@@ -851,6 +851,7 @@ def feature_extractor(dataloader : DataLoader, split : str, task : str, dataset_
     features = []
     targets_fine = []
     targets_coarse = []
+    model.eval()
     with torch.no_grad():
         for item in dataloader:
             data = item[0]
